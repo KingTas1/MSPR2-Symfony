@@ -8,31 +8,38 @@ use Symfony\Component\HttpFoundation\{Request, JsonResponse};
 use Symfony\Component\Routing\Annotation\Route;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 
-class ContactApiController
+final class ContactApiController
 {
     #[Route('/api/message', name: 'api_contact_message', methods: ['POST'])]
+    #[Route('/api/contact', name: 'api_contact_legacy', methods: ['POST'])]
     public function __invoke(
         Request $request,
         EntityManagerInterface $em,
         ValidatorInterface $validator
     ): JsonResponse {
-        $name    = trim((string)$request->request->get('nom', $request->request->get('name', '')));
-        $email   = trim((string)$request->request->get('email', ''));
-        $phone   = trim((string)$request->request->get('phone', ''));
-        $text    = trim((string)$request->request->get('text', $request->request->get('message', '')));
+        $payload = [];
+        if (0 === strpos((string) $request->headers->get('Content-Type'), 'application/json')) {
+            $payload = json_decode($request->getContent() ?? '', true) ?: [];
+        }
 
-        $msg = new ContactMessage();
-        $msg->setName($name);
-        $msg->setEmail($email);
-        $msg->setPhone($phone ?: null);
-        $msg->setMessage($text);
+        $get = fn(string $k, string $alt = '') => trim((string)($payload[$k] ?? $request->request->get($k, $alt)));
+
+        $name  = $get('nom', $get('name', ''));
+        $email = $get('email', '');
+        $phone = $get('phone', '');
+        $text  = $get('text', $get('message', ''));
+
+        $msg = (new ContactMessage())
+            ->setName($name)
+            ->setEmail($email)
+            ->setPhone($phone ?: null)
+            ->setMessage($text);
 
         $errors = $validator->validate($msg);
-        if (count($errors) > 0) {
-
+        if (\count($errors) > 0) {
             return new JsonResponse([
                 'ok' => false,
-                'error' => (string)$errors[0]->getMessage()
+                'error' => (string) $errors[0]->getMessage(),
             ], 400);
         }
 
@@ -41,7 +48,8 @@ class ContactApiController
 
         return new JsonResponse([
             'ok' => true,
-            'id' => $msg->getId()
+            'id' => $msg->getId(),
+            'createdAt' => $msg->getCreatedAt()?->format(\DateTimeInterface::ATOM),
         ], 201);
     }
 }

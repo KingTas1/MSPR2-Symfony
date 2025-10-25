@@ -11,6 +11,8 @@ use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Get;
 
 #[ORM\Entity(repositoryClass: ContactMessageRepository::class)]
+#[ORM\Table(name: 'contact_message')]
+#[ORM\Index(columns: ['created_at'], name: 'idx_contact_message_created_at')]
 #[ApiResource(operations: [
     new GetCollection(security: "is_granted('ROLE_ADMIN')"),
     new Get(security: "is_granted('ROLE_ADMIN')")
@@ -104,5 +106,13 @@ class ContactMessage
     {
         $this->createdAt = $createdAt;
         return $this;
+    }
+    
+    #[ORM\PrePersist]
+    public function initCreatedAt(): void
+    {
+        if (null === $this->createdAt) {
+            $this->createdAt = new \DateTimeImmutable('now');
+        }
     }
 }
