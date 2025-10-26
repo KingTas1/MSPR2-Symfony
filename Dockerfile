@@ -8,8 +8,7 @@ COPY composer.json composer.lock symfony.lock* ./
 # Debug : versions
 RUN php -v && composer -V
 
-# Install des vendors sans scripts (évite les plantages de recettes post-install)
-# -vvv : logs détaillés si ça casse
+# Install des vendors sans scripts
 RUN COMPOSER_MEMORY_LIMIT=-1 composer install \
     --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-scripts -vvv
 
@@ -33,33 +32,34 @@ RUN a2enmod rewrite \
 # Composer (pour dump-autoload si besoin)
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Vars d'env “build”
 ENV COMPOSER_ALLOW_SUPERUSER=1 \
     COMPOSER_MEMORY_LIMIT=-1 \
     APP_ENV=prod
 
 WORKDIR /var/www/html
 
-# 1) Copie des vendors générés au stage composer
-COPY --from=composer_stage /app/vendor ./vendor
-COPY composer.json composer.lock symfony.lock* ./
+# 1) Copie des vendors générés au stage composer en réglant la propriété (plus fiable que chown en RUN)
+#    COPY --chown est supporté par Docker & BuildKit. Si votre builder ne supporte pas --chown, enlevez l'option.
+COPY --from=composer_stage --chown=www-data:www-data /app/vendor ./vendor
+COPY --chown=www-data:www-data composer.json composer.lock symfony.lock* ./
 
 # Debug: montrer extensions PHP
 RUN php -v && php -m && composer -V
 
-# 2) Copie du reste de l’app (code, config, public/, public/app si tu serres ton build React ici)
-COPY . .
+# 2) Copie du reste de l’app en donnant la propriété à www-data (évite chown récursif fragile)
+#    Si votre builder ne supporte pas --chown, enlevez l'option COPY --chown et voir fallback ci-dessous.
+COPY --chown=www-data:www-data . .
 
-# Permissions cache/logs
-RUN chown -R www-data:www-data var public \
- && find var -type d -exec chmod 775 {} \; \
- && find var -type f -exec chmod 664 {} \;
+# Assurer l'existence des dossiers var et public et appliquer des permissions non bloquantes
+RUN mkdir -p var public \
+ && (chown -R www-data:www-data var public || true) \
+ && (find var -type d -exec chmod 775 {} \; || true) \
+ && (find var -type f -exec chmod 664 {} \; || true)
 
 # (Option) dump autoload propre après copie complète
 RUN composer dump-autoload --optimize --no-dev
 
-# Warmup cache (si APP_ENV=prod set & pas de scripts manquants)
-# Si ça casse ici, c’est souvent un problème de DATABASE_URL manquant côté Render (à mettre dans les envs Render).
+# Warmup cache (si APP_ENV=prod set)
 RUN php bin/console cache:clear --env=prod --no-warmup \
  && php bin/console cache:warmup --env=prod -vvv || (echo "⚠️ cache:warmup a échoué; on continue pour inspecter en runtime" && true)
 
