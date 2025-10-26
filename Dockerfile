@@ -63,5 +63,10 @@ RUN composer dump-autoload --optimize --no-dev
 RUN php bin/console cache:clear --env=prod --no-warmup \
  && php bin/console cache:warmup --env=prod -vvv || (echo "⚠️ cache:warmup a échoué; on continue pour inspecter en runtime" && true)
 
+# Copier l'entrypoint qui adapte Apache au PORT fourni par Render
+COPY ./docker/render-entrypoint.sh /usr/local/bin/render-entrypoint.sh
+RUN chmod +x /usr/local/bin/render-entrypoint.sh
+
 EXPOSE 80
-CMD ["apache2-foreground"]
+# Lancer l'entrypoint qui réécrit la conf Apache pour écouter sur $PORT, puis démarre Apache
+CMD ["/usr/local/bin/render-entrypoint.sh"]
