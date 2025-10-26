@@ -38,16 +38,14 @@ ENV COMPOSER_ALLOW_SUPERUSER=1 \
 
 WORKDIR /var/www/html
 
-# 1) Copie des vendors générés au stage composer en réglant la propriété (plus fiable que chown en RUN)
-#    COPY --chown est supporté par Docker & BuildKit. Si votre builder ne supporte pas --chown, enlevez l'option.
+# 1) Copie des vendors générés au stage composer en réglant la propriété
 COPY --from=composer_stage --chown=www-data:www-data /app/vendor ./vendor
 COPY --chown=www-data:www-data composer.json composer.lock symfony.lock* ./
 
 # Debug: montrer extensions PHP
 RUN php -v && php -m && composer -V
 
-# 2) Copie du reste de l’app en donnant la propriété à www-data (évite chown récursif fragile)
-#    Si votre builder ne supporte pas --chown, enlevez l'option COPY --chown et voir fallback ci-dessous.
+# 2) Copie du reste de l’app en donnant la propriété à www-data
 COPY --chown=www-data:www-data . .
 
 # Assurer l'existence des dossiers var et public et appliquer des permissions non bloquantes
@@ -68,5 +66,5 @@ COPY ./docker/render-entrypoint.sh /usr/local/bin/render-entrypoint.sh
 RUN chmod +x /usr/local/bin/render-entrypoint.sh
 
 EXPOSE 80
-# Lancer l'entrypoint qui réécrit la conf Apache pour écouter sur $PORT, puis démarre Apache
+# Lancer l'entrypoint qui va modifier la config Apache pour écouter sur $PORT et démarrer Apache
 CMD ["/usr/local/bin/render-entrypoint.sh"]
